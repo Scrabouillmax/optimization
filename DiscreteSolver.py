@@ -6,6 +6,11 @@ class DiscreteSolver:
         self.domain = domain
         self.constraints = {}
         self.affectation = {}
+        # used to save variables domains before reducing it when running the forward compatibility check.
+        # domain_cache[var_name] is a dictionary containing the copy
+        # of all variables for which the domain was changed by forward check
+        # after assigning var_name to a value.
+        self.domain_cache = {var_name: {} for var_name in domain.keys()}
 
     def add_constraint(self, var1_name, var2_name, is_affectation_possible):
         """
@@ -21,7 +26,7 @@ class DiscreteSolver:
 
     def _select_variable(self):
         """
-        :return: the variable with the smallest domain not already affected. None if all variables are affected.
+        :return: the variable with the smallest domain not already assigned. None if all variables are assigned.
         """
         var_with_smallest_domain = None
         smallest_domain_size = float('Inf')
@@ -37,7 +42,7 @@ class DiscreteSolver:
         """
         :param var_name: name of the variable
         :param value: value for the variable.
-        :return: True if this value for var_name is compatible with already affected variables.
+        :return: True if this value for var_name is compatible with already assigned variables.
         """
         for affected_var_name, affected_var_value in self.affectation.items():
             constraint_key = (var_name, affected_var_name)
@@ -45,9 +50,53 @@ class DiscreteSolver:
                 return False
         return True
 
-    def solve(self):
+    def _forward_compatibility_check(self, affected_var_name, affected_var_value):
         """
+        Reduces the domain of all the variables not yet assigned
+        to satisfy all the constraints after affected_var_name affectation.
+        :param affected_var_name: name of the variable assigned before this check.
+        :param affected_var_value: value of the variable assigned before this check.
+        :return: False if it is not possible to find a solution after this assignment
+            (i.e. one of the non-assigned variable's domain is empty), True otherwise.
+        """
+        for var_name, var_domain in self.domain.items():
+            if var_name not in self.affectation and (affected_var_name, var_name) in self.constraints:
+                new_var_domain = [
+                    value
+                    for value in var_domain
+                    if self.constraints[(affected_var_name, var_name)](affected_var_value, value)
+                ]
+                if len(new_var_domain) == 0:
+                    # one of the non-assigned variable is no longer possible to assign
+                    return False
+                if len(new_var_domain) < len(var_domain):
+                    self.domain_cache[affected_var_name][var_name] = var_domain
+                    self.domain[var_name] = new_var_domain
 
+        return True
+
+    def _perform_compatibility_check(self, compatibility_check, var_name, value):
+        """
+        Assigns value to var_name if possible.
+        :param compatibility_check: 'forward' or 'backward'
+        :param var_name: name of the variable to assign.
+        :param value: value of the variable to assign.
+        :return: True if the variable has been assigned, False otherwise.
+        """
+        if compatibility_check == 'backward':
+            if self._backward_compatibility_check(var_name, value):
+                self.affectation[var_name] = value
+                return True
+            return False
+
+        if self._forward_compatibility_check(var_name, value):
+            self.affectation[var_name] = value
+            return True
+        return False
+
+    def solve(self, compatibility_check='forward'):
+        """
+        :param compatibility_check: 'forward' or 'backward'
         :return: dict with keys variable names and values an affectation for each variables satisfying the constraint.
         """
         var_name = self._select_variable()
@@ -56,15 +105,14 @@ class DiscreteSolver:
             return self.affectation
 
         for possible_value in self.domain[var_name]:
-            if self._backward_compatibility_check(var_name, possible_value):
-                self.affectation[var_name] = possible_value
-                solution = self.solve()
+            if self._perform_compatibility_check(compatibility_check, var_name, possible_value):
+                solution = self.solve(compatibility_check=compatibility_check)
 
                 if solution:
                     return solution
 
                 del self.affectation[var_name]
-
-
-
+                for cached_domain_var_name, cached_domain_value in self.domain_cache[var_name].items():
+                    self.domain[cached_domain_var_name] = cached_domain_value
+                self.domain_cache[var_name] = {}
 
