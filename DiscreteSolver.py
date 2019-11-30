@@ -1,3 +1,6 @@
+from random import randint, shuffle
+
+
 class DiscreteSolver:
     def __init__(self, domain):
         """
@@ -26,17 +29,28 @@ class DiscreteSolver:
             self.constraints[(var2_name, var1_name)] = lambda var2, var1: is_affectation_possible(var1, var2)
         else:
             # if a constraint already exists for this couple, combine them.
+            previous_constraint = self.constraints[(var1_name, var2_name)]
+            previous_constraint_inverse = self.constraints[(var2_name, var1_name)]
+
             self.constraints[(var1_name, var2_name)] = \
                 lambda var1, var2: \
-                self.constraints[(var1_name, var2_name)](var1, var2) and is_affectation_possible(var1, var2)
+                previous_constraint(var1, var2) and is_affectation_possible(var1, var2)
             self.constraints[(var2_name, var1_name)] = \
                 lambda var2, var1: \
-                self.constraints[(var2_name, var1_name)](var2, var1) and is_affectation_possible(var1, var2)
+                previous_constraint_inverse(var2, var1) and is_affectation_possible(var1, var2)
 
-    def _select_variable(self):
+        return self
+
+    def _select_variable(self, variable_selection):
         """
+        :param variable_selection: 'smallest-domain' or 'random'
         :return: the variable with the smallest domain not already assigned. None if all variables are assigned.
         """
+        if variable_selection == 'random':
+            possible_variables = [var_name for var_name in self.domain if var_name not in self.affectation]
+            if len(possible_variables) == 0:
+                return None
+            return possible_variables[randint(0, len(possible_variables) - 1)]
         var_with_smallest_domain = None
         smallest_domain_size = float('Inf')
 
@@ -103,20 +117,23 @@ class DiscreteSolver:
             return True
         return False
 
-    def solve(self, compatibility_check='forward'):
+    def solve(self, compatibility_check='forward', variable_selection='smallest-domain'):
         """
         :param compatibility_check: 'forward' or 'backward'
+        :param variable_selection: 'smallest-domain' or 'random'
         :return: dict with keys variable names and values an affectation for each variables satisfying the constraint.
         """
-        var_name = self._select_variable()
+        var_name = self._select_variable(variable_selection)
 
         if var_name is None:
             return self.affectation
 
+        if variable_selection == 'random':
+            shuffle(self.domain[var_name])
+
         for possible_value in self.domain[var_name]:
             if self._perform_compatibility_check(compatibility_check, var_name, possible_value):
-                solution = self.solve(compatibility_check=compatibility_check)
-
+                solution = self.solve(compatibility_check=compatibility_check, variable_selection=variable_selection)
                 if solution:
                     return solution
 
