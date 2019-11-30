@@ -21,8 +21,17 @@ class DiscreteSolver:
             returns True if the value passed are a possible affectation for var1 and var2, returns False otherwise.
         :return: None.
         """
-        self.constraints[(var1_name, var2_name)] = is_affectation_possible
-        self.constraints[(var2_name, var1_name)] = lambda var2, var1: is_affectation_possible(var1, var2)
+        if not (var1_name, var2_name) in self.constraints:
+            self.constraints[(var1_name, var2_name)] = is_affectation_possible
+            self.constraints[(var2_name, var1_name)] = lambda var2, var1: is_affectation_possible(var1, var2)
+        else:
+            # if a constraint already exists for this couple, combine them.
+            self.constraints[(var1_name, var2_name)] = \
+                lambda var1, var2: \
+                self.constraints[(var1_name, var2_name)](var1, var2) and is_affectation_possible(var1, var2)
+            self.constraints[(var2_name, var1_name)] = \
+                lambda var2, var1: \
+                self.constraints[(var2_name, var1_name)](var2, var1) and is_affectation_possible(var1, var2)
 
     def _select_variable(self):
         """
@@ -115,4 +124,3 @@ class DiscreteSolver:
                 for cached_domain_var_name, cached_domain_value in self.domain_cache[var_name].items():
                     self.domain[cached_domain_var_name] = cached_domain_value
                 self.domain_cache[var_name] = {}
-
